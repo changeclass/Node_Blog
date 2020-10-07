@@ -6,14 +6,33 @@ const {
     delBlog
 } = require('../controller/blog')
 const {SuccessModel, ErrorModel} = require('../model/resModel')
+
+// 统一登陆验证的函数
+const loginCheck = (req) => {
+    if (!req.session.username) {
+        return Promise.resolve(new ErrorModel('未登陆'))
+    }
+}
+
 const handleBlogRouter = (req, res) => {
     // 请求方式
     const method = req.method
     const id = req.query.id
     // 获取博客列表
     if (method === 'GET' && req.path === '/api/blog/list') {
-        const author = req.query.author || ''
+        let author = req.query.author || ''
         const keyword = req.query.keyword || ''
+
+        if (req.query.isadmin) {
+            // 管理员验证
+            const loginCheckRult = loginCheck(req)
+            if (loginCheckRult) {
+                // 未登陆
+                return loginCheckRult
+            }
+            // 强行查询自己的博客
+            author = req.session.username
+        }
         const result = getList(author, keyword)
         return result.then(listData => {
             return new SuccessModel(listData)
@@ -28,8 +47,12 @@ const handleBlogRouter = (req, res) => {
     }
     // 新建一篇博客
     if (method === 'POST' && req.path === '/api/blog/new') {
-
-        req.body.author = 'zhangsan' // 登陆后改为真实数据
+        const loginCheckResult = loginCheck(req)
+        if (loginCheckResult) {
+            // 未登录
+            return loginCheckResult
+        }
+        req.body.author = req.session.username
         const result = newBlog(req.body)
         return result.then(data => {
             return new SuccessModel(data)
@@ -37,6 +60,11 @@ const handleBlogRouter = (req, res) => {
     }
     // 更新一篇博客
     if (method === 'POST' && req.path === '/api/blog/update') {
+        const loginCheckResult = loginCheck(req)
+        if (loginCheckResult) {
+            // 未登录
+            return loginCheckResult
+        }
         const result = updataBlog(id, req.body)
         return result.then(val => {
             if (val) {
@@ -49,7 +77,12 @@ const handleBlogRouter = (req, res) => {
     }
     // 删除一篇博客
     if (method === 'POST' && req.path === '/api/blog/del') {
-        const author = 'zhangsan'
+        const loginCheckResult = loginCheck(req)
+        if (loginCheckResult) {
+            // 未登录
+            return loginCheck
+        }
+        const author = req.session.username
         const result = delBlog(id, author)
         return result.then(val => {
             if (val) {
