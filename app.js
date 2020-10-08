@@ -1,6 +1,10 @@
 const querystring = require('querystring')
+const {get, set} = require('./src/db/redis')
+const {access} = require('./src/utils/log')
 const handleBlogRouter = require('./src/router/blog')
 const handleUserRouter = require('./src/router/user')
+
+
 // 获取cookie的过期时间
 const getCookieExpries = () => {
     const d = new Date()
@@ -37,6 +41,8 @@ const getPostData = (req) => {
     }))
 }
 const serverHandle = (req, res) => {
+    // 记录日志 access log
+    access(`${req.method} --- ${req.url} -- ${req.headers['user-agent']} -- ${Date.now()}`)
     // 设置返回格式 JSON
     res.setHeader('Content-type', 'application/json')
     //  处理请求路径
@@ -58,25 +64,32 @@ const serverHandle = (req, res) => {
         const key = arr[0].trim()
         req.cookie[key] = arr[1].trim()
     })
-    // 解析sesson
-    let needSetCookie = false // 判断是否需要设置Cookie的标志
-    let userId = req.cookie.userid // Cookie中存放的值
-    // 如果存在
-    if (userId) {
-        // 如果SESSION_DATA中不存在这个值，那么需要建立Session
-        if (!SESSION_DATA[userId]) {
-            SESSION_DATA[userId] = {}
-        }
-    } else {
-        // 如果不存在Cookie
+    // 解析 session （使用 redis）
+    let needSetCookie = false
+    let userId = req.cookie.userid
+    if (!userId) {
         needSetCookie = true
         userId = `${Date.now()}_${Math.random()}`
-        SESSION_DATA[userId] = {}
-
+        // 初始化 redis 中的 session 值
+        set(userId, {})
     }
-    req.session = SESSION_DATA[userId]
-    // 处理post data
-    getPostData(req).then(postData => {
+    // 获取 session
+    req.sessionId = userId
+    get(req.sessionId).then(sessionData => {
+        if (sessionData == null) {
+            // 初始化 redis 中的 session 值
+            set(req.sessionId, {})
+            // 设置 session
+            req.session = {}
+        } else {
+            // 设置 session
+            req.session = sessionData
+        }
+        // console.log('req.session ', req.session)
+
+        // 处理 post data
+        return getPostData(req)
+    }).then(postData => {
         req.body = postData
 
         // 处理Blog路由
